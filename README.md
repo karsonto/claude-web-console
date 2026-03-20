@@ -33,16 +33,6 @@ python src/claude-sdk.py
 
 [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-## Screenshots
-
-### Main Workspace
-
-![Main workspace](docs/assets/chat-overview.png)
-
-### Session And Command Panel
-
-![Session and command panel](docs/assets/chat-management.png)
-
 ## Features
 
 - 多轮会话：基于 `ClaudeSDKClient` 维护上下文
@@ -135,10 +125,6 @@ acceptEdits
 claude-web-console/
 ├── README.md
 ├── requirements.txt
-├── docs/
-│   └── assets/
-│       ├── chat-management.png
-│       └── chat-overview.png
 ├── src/
 │   ├── __init__.py
 │   ├── claude-sdk.py
