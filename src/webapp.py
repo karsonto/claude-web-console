@@ -14,9 +14,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
-    RateLimitEvent,
     ResultMessage,
-    StreamEvent,
     SystemMessage,
     TaskNotificationMessage,
     TaskProgressMessage,
@@ -25,6 +23,7 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from claude_agent_sdk.types import StreamEvent
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -407,21 +406,6 @@ async def stream_chat_response(
                             "type": "task_done",
                             "status": message.status,
                             "summary": message.summary,
-                        }
-                    )
-                    continue
-
-                if isinstance(message, RateLimitEvent):
-                    assistant_meta.append(
-                        meta_entry(
-                            f"限流状态: {message.rate_limit_info.status}",
-                            "error",
-                        )
-                    )
-                    yield json_line(
-                        {
-                            "type": "rate_limit",
-                            "status": message.rate_limit_info.status,
                         }
                     )
                     continue
