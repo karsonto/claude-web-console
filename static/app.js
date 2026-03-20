@@ -1,4 +1,9 @@
 const STORAGE_KEY = "claude-web-session";
+const CONFIG_STORAGE_KEY = "claude-web-config";
+const DEFAULT_CONFIG = {
+  version: 1,
+  add_dirs: [],
+};
 
 const state = {
   sessionId: null,
@@ -6,6 +11,7 @@ const state = {
   isStopping: false,
   currentAssistantTurn: null,
   currentAbortController: null,
+  addDirs: [],
 };
 
 const chatLog = document.getElementById("chat-log");
@@ -17,6 +23,14 @@ const sessionIdEl = document.getElementById("session-id");
 const modelNameEl = document.getElementById("model-name");
 const permissionModeEl = document.getElementById("permission-mode");
 const skillsListEl = document.getElementById("skills-list");
+const addDirsListEl = document.getElementById("add-dirs-list");
+const editConfigButton = document.getElementById("edit-config-btn");
+const configModal = document.getElementById("config-modal");
+const closeConfigButton = document.getElementById("close-config-btn");
+const resetConfigButton = document.getElementById("reset-config-btn");
+const saveConfigButton = document.getElementById("save-config-btn");
+const configJsonInput = document.getElementById("config-json-input");
+const configErrorEl = document.getElementById("config-error");
 
 function syncPrimaryAction() {
   if (state.isStreaming) {
@@ -31,6 +45,146 @@ function syncPrimaryAction() {
     sendButton.classList.add("primary-button");
     sendButton.disabled = false;
     sendButton.type = "submit";
+  }
+}
+
+function getDefaultConfig() {
+  return {
+    version: DEFAULT_CONFIG.version,
+    add_dirs: [],
+  };
+}
+
+function sanitizeConfig(rawConfig) {
+  if (!rawConfig || typeof rawConfig !== "object" || Array.isArray(rawConfig)) {
+    throw new Error("配置必须是一个 JSON 对象");
+  }
+
+  const addDirsRaw = rawConfig.add_dirs;
+  if (!Array.isArray(addDirsRaw)) {
+    throw new Error("`add_dirs` 必须是字符串数组");
+  }
+
+  const normalizedAddDirs = [];
+  const seen = new Set();
+  for (const item of addDirsRaw) {
+    if (typeof item !== "string") {
+      throw new Error("`add_dirs` 中的每一项都必须是字符串");
+    }
+
+    const cleaned = item.trim();
+    if (!cleaned || seen.has(cleaned)) {
+      continue;
+    }
+
+    seen.add(cleaned);
+    normalizedAddDirs.push(cleaned);
+  }
+
+  return {
+    version: typeof rawConfig.version === "number" ? rawConfig.version : DEFAULT_CONFIG.version,
+    add_dirs: normalizedAddDirs,
+  };
+}
+
+function getCurrentConfig() {
+  return {
+    version: DEFAULT_CONFIG.version,
+    add_dirs: [...state.addDirs],
+  };
+}
+
+function writeConfig(config) {
+  localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+}
+
+function readConfig() {
+  try {
+    const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+    if (!raw) {
+      return getDefaultConfig();
+    }
+    return sanitizeConfig(JSON.parse(raw));
+  } catch {
+    return getDefaultConfig();
+  }
+}
+
+function applyConfig(config, options = {}) {
+  state.addDirs = [...config.add_dirs];
+  renderAddDirs();
+  syncConfigEditor(config);
+
+  if (options.persist !== false) {
+    writeConfig(config);
+  }
+}
+
+function syncConfigEditor(config = getCurrentConfig()) {
+  configJsonInput.value = `${JSON.stringify(config, null, 2)}\n`;
+}
+
+function hideConfigError() {
+  configErrorEl.textContent = "";
+  configErrorEl.classList.add("hidden");
+}
+
+function showConfigError(message) {
+  configErrorEl.textContent = message;
+  configErrorEl.classList.remove("hidden");
+}
+
+function openConfigModal() {
+  hideConfigError();
+  syncConfigEditor();
+  configModal.classList.remove("hidden");
+  configModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  configJsonInput.focus();
+}
+
+function closeConfigModal() {
+  configModal.classList.add("hidden");
+  configModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+}
+
+function saveConfigFromModal() {
+  hideConfigError();
+
+  try {
+    const parsed = JSON.parse(configJsonInput.value);
+    const sanitized = sanitizeConfig(parsed);
+    applyConfig(sanitized);
+    closeConfigModal();
+  } catch (error) {
+    showConfigError(error.message || "配置保存失败，请检查 JSON 格式。");
+  }
+}
+
+function resetConfigToDefault() {
+  hideConfigError();
+  syncConfigEditor(getDefaultConfig());
+}
+
+function renderAddDirs() {
+  addDirsListEl.innerHTML = "";
+
+  if (state.addDirs.length === 0) {
+    addDirsListEl.innerHTML = '<span class="chip muted">未配置附加目录</span>';
+    return;
+  }
+
+  for (const dirPath of state.addDirs) {
+    const item = document.createElement("div");
+    item.className = "dir-item";
+
+    const pathText = document.createElement("span");
+    pathText.className = "dir-path";
+    pathText.textContent = dirPath;
+
+    item.appendChild(pathText);
+    addDirsListEl.appendChild(item);
   }
 }
 
@@ -194,6 +348,28 @@ function renderHistory(history) {
   }
 }
 
+async function readErrorDetail(response, fallbackMessage) {
+  try {
+    const payload = await response.json();
+    if (payload && typeof payload.detail === "string" && payload.detail) {
+      return payload.detail;
+    }
+  } catch {
+    // Ignore JSON parse failures and fall back to plain text.
+  }
+
+  try {
+    const text = await response.text();
+    if (text) {
+      return text;
+    }
+  } catch {
+    // Ignore read failures and use fallback message below.
+  }
+
+  return fallbackMessage;
+}
+
 async function fetchSessionState(sessionId) {
   const response = await fetch(`/api/sessions/${sessionId}`);
   if (!response.ok) {
@@ -203,14 +379,27 @@ async function fetchSessionState(sessionId) {
 }
 
 async function createSession() {
-  const response = await fetch("/api/sessions", { method: "POST" });
+  const response = await fetch("/api/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ add_dirs: state.addDirs }),
+  });
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await readErrorDetail(response, "创建会话失败");
     throw new Error(`创建会话失败：${detail}`);
   }
 
   const data = await response.json();
   state.sessionId = data.session_id;
+  if (Array.isArray(data.add_dirs)) {
+    applyConfig(
+      {
+        version: DEFAULT_CONFIG.version,
+        add_dirs: data.add_dirs,
+      },
+      { persist: true }
+    );
+  }
   renderSessionMeta(data);
   renderHistory([]);
   saveSessionId(data.session_id);
@@ -245,19 +434,13 @@ async function resetSession() {
     return;
   }
 
-  if (state.sessionId) {
-    await fetch(`/api/sessions/${state.sessionId}`, { method: "DELETE" }).catch(() => {});
-  }
-
-  state.sessionId = null;
+  const previousSessionId = state.sessionId;
   state.currentAssistantTurn = null;
-  clearSavedSession();
-  clearChatLog();
-  sessionIdEl.textContent = "未创建";
-  modelNameEl.textContent = "-";
-  permissionModeEl.textContent = "-";
-  skillsListEl.innerHTML = '<span class="chip muted">等待初始化</span>';
   await createSession();
+
+  if (previousSessionId) {
+    await fetch(`/api/sessions/${previousSessionId}`, { method: "DELETE" }).catch(() => {});
+  }
 }
 
 async function interruptCurrentTurn() {
@@ -449,7 +632,38 @@ sendButton.addEventListener("click", async () => {
 });
 
 newChatButton.addEventListener("click", async () => {
-  await resetSession();
+  try {
+    await resetSession();
+  } catch (error) {
+    const turn = createMessage("assistant", "新建会话失败，请检查附加目录配置。");
+    addMetaPill(turn, error.message || "新建会话失败", "error");
+  }
+});
+
+editConfigButton.addEventListener("click", () => {
+  openConfigModal();
+});
+
+closeConfigButton.addEventListener("click", () => {
+  closeConfigModal();
+});
+
+resetConfigButton.addEventListener("click", () => {
+  resetConfigToDefault();
+});
+
+saveConfigButton.addEventListener("click", () => {
+  saveConfigFromModal();
+});
+
+configModal.addEventListener("click", (event) => {
+  if (event.target === configModal) {
+    closeConfigModal();
+  }
+});
+
+configJsonInput.addEventListener("input", () => {
+  hideConfigError();
 });
 
 document.querySelectorAll(".prompt-chip").forEach((button) => {
@@ -461,10 +675,17 @@ document.querySelectorAll(".prompt-chip").forEach((button) => {
 
 window.addEventListener("load", async () => {
   syncPrimaryAction();
+  applyConfig(readConfig(), { persist: false });
   try {
     await restoreOrCreateSession();
   } catch (error) {
     const turn = createMessage("assistant", "初始化会话失败，请检查 Claude Code 登录态或本地配置。");
     addMetaPill(turn, error.message || "初始化失败", "error");
+  }
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !configModal.classList.contains("hidden")) {
+    closeConfigModal();
   }
 });

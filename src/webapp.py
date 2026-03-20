@@ -65,6 +65,7 @@ class CreateSessionResponse(BaseModel):
     permission_mode: str | None = None
     skills: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
+    add_dirs: list[str] = Field(default_factory=list)
 
 
 class MessageRecord(BaseModel):
@@ -77,6 +78,10 @@ class MessageRecord(BaseModel):
 class SessionStateResponse(CreateSessionResponse):
     history: list[MessageRecord] = Field(default_factory=list)
     active: bool = True
+
+
+class CreateSessionRequest(BaseModel):
+    add_dirs: list[str] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):
@@ -93,6 +98,7 @@ class ChatSession:
     server_info: dict[str, Any] | None = None
     history: list[dict[str, Any]] = field(default_factory=list)
     claude_session_id: str | None = None
+    add_dirs: list[str] = field(default_factory=list)
 
 
 class SessionManager:
@@ -115,6 +121,39 @@ class SessionManager:
             encoding="utf-8",
         )
 
+    def _validate_add_dirs(self, add_dirs: list[str] | None) -> list[str]:
+        if not add_dirs:
+            return []
+
+        normalized_dirs: list[str] = []
+        seen: set[str] = set()
+
+        for raw_dir in add_dirs:
+            cleaned_dir = raw_dir.strip()
+            if not cleaned_dir:
+                continue
+
+            resolved_dir = Path(cleaned_dir).expanduser().resolve()
+            if not resolved_dir.exists():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"附加目录不存在: {resolved_dir}",
+                )
+            if not resolved_dir.is_dir():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"附加路径不是目录: {resolved_dir}",
+                )
+
+            resolved_str = str(resolved_dir)
+            if resolved_str in seen:
+                continue
+
+            seen.add(resolved_str)
+            normalized_dirs.append(resolved_str)
+
+        return normalized_dirs
+
     async def _persist_sessions(self) -> None:
         async with self._lock:
             payload = {
@@ -125,6 +164,7 @@ class SessionManager:
                     "history": session.history,
                     "claude_session_id": session.claude_session_id,
                     "permission_mode": session.client.options.permission_mode,
+                    "add_dirs": session.add_dirs,
                     "active": True,
                 }
                 for session_id, session in self._sessions.items()
@@ -153,9 +193,10 @@ class SessionManager:
         except RuntimeError:
             pass
 
-    async def create_session(self) -> ChatSession:
+    async def create_session(self, add_dirs: list[str] | None = None) -> ChatSession:
         session_id = uuid.uuid4().hex
         permission_mode = os.getenv("CLAUDE_WEB_PERMISSION_MODE", "acceptEdits")
+        validated_add_dirs = self._validate_add_dirs(add_dirs)
 
         options = ClaudeAgentOptions(
             tools={"type": "preset", "preset": "claude_code"},
@@ -169,6 +210,7 @@ class SessionManager:
             setting_sources=["user", "project", "local"],
             include_partial_messages=True,
             cwd=BASE_DIR,
+            add_dirs=validated_add_dirs,
         )
 
         client = ClaudeSDKClient(options=options)
@@ -179,6 +221,7 @@ class SessionManager:
             session_id=session_id,
             client=client,
             server_info=info,
+            add_dirs=validated_add_dirs,
         )
         async with self._lock:
             self._sessions[session_id] = session
@@ -239,6 +282,7 @@ class SessionManager:
                 for agent in agents
                 if isinstance(agent, dict) and agent.get("name")
             ],
+            "add_dirs": stored.get("add_dirs", []),
             "history": stored.get("history", []),
             "active": False,
         }
@@ -292,6 +336,7 @@ def session_response(session: ChatSession) -> CreateSessionResponse:
             for agent in agents
             if isinstance(agent, dict) and agent.get("name")
         ],
+        add_dirs=session.add_dirs,
     )
 
 
@@ -485,8 +530,10 @@ async def index() -> FileResponse:
 
 
 @app.post("/api/sessions", response_model=CreateSessionResponse)
-async def create_session() -> CreateSessionResponse:
-    session = await session_manager.create_session()
+async def create_session(
+    request: CreateSessionRequest | None = None,
+) -> CreateSessionResponse:
+    session = await session_manager.create_session(request.add_dirs if request else [])
     return session_response(session)
 
 

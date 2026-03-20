@@ -48,6 +48,22 @@
       </div>
 
       <div class="panel">
+        <div class="panel-header">
+          <h2>附加目录</h2>
+          <button id="edit-config-btn" class="ghost-button" type="button">编辑 JSON</button>
+        </div>
+        <div class="dir-config">
+          <div class="dir-config-summary">
+            <span class="composer-label">本地 JSON 配置</span>
+            <span class="panel-note">保存在浏览器 storage 中，新建会话时生效</span>
+          </div>
+          <div id="add-dirs-list" class="dir-list">
+            <span class="chip muted">未配置附加目录</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
         <h2>可用 Skills / Commands</h2>
         <div id="skills-list" class="chip-list">
           <span class="chip muted">等待初始化</span>
@@ -91,6 +107,32 @@
         </div>
       </form>
     </main>
+  </div>
+
+  <div id="config-modal" class="modal-backdrop hidden" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="config-modal-title">
+      <div class="panel-header modal-header">
+        <div>
+          <h2 id="config-modal-title">附加目录配置</h2>
+          <p class="modal-description">使用 JSON 配置浏览器本地保存的 `add_dirs`，点击“新建会话”后生效。</p>
+        </div>
+        <button id="close-config-btn" class="ghost-button" type="button">关闭</button>
+      </div>
+      <label class="composer-label" for="config-json-input">配置 JSON</label>
+      <textarea
+        id="config-json-input"
+        class="config-json-input"
+        spellcheck="false"
+      >{
+  "version": 1,
+  "add_dirs": []
+}</textarea>
+      <div id="config-error" class="config-error hidden"></div>
+      <div class="modal-actions">
+        <button id="reset-config-btn" class="ghost-button" type="button">重置默认</button>
+        <button id="save-config-btn" class="primary-button" type="button">保存配置</button>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>

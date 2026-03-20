@@ -37,6 +37,10 @@ body {
   color: var(--text);
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
@@ -115,6 +119,11 @@ body {
   font-weight: 700;
 }
 
+.panel-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -156,7 +165,8 @@ body {
 }
 
 .chip-list,
-.prompt-list {
+.prompt-list,
+.dir-list {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -187,6 +197,115 @@ body {
   border-color: #b8daf8;
   background: var(--primary-soft);
   color: var(--primary-strong);
+}
+
+.dir-config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dir-config-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dir-item {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+}
+
+.dir-path {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(37, 54, 77, 0.36);
+  backdrop-filter: blur(4px);
+}
+
+.modal-backdrop.hidden,
+.config-error.hidden {
+  display: none;
+}
+
+.modal-card {
+  width: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 16px 48px rgba(35, 74, 122, 0.14);
+}
+
+.modal-header {
+  margin-bottom: 0;
+  align-items: flex-start;
+}
+
+.modal-description {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.config-json-input {
+  width: 100%;
+  min-height: 320px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border-strong);
+  background: #f8fbff;
+  color: var(--text);
+  font:
+    13px/1.65 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  outline: none;
+  resize: vertical;
+  box-shadow: inset 0 1px 2px rgba(65, 101, 145, 0.04);
+}
+
+.config-json-input:focus {
+  border-color: #9fd2ff;
+  box-shadow: 0 0 0 4px rgba(100, 181, 255, 0.14);
+}
+
+.config-error {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #ffd9dc;
+  background: var(--danger-soft);
+  color: #d0606b;
+  font-size: 13px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .chat-layout {
@@ -532,5 +651,14 @@ button:disabled {
 
   .message {
     max-width: 100%;
+  }
+
+  .modal-card,
+  .modal-actions {
+    width: 100%;
+  }
+
+  .modal-actions {
+    flex-direction: column;
   }
 }
